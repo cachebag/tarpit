@@ -26,7 +26,7 @@ impl HeaderUstar {
     }
 }
 
-fn test() {
+pub fn test() {
     let dummy_block = [0u8; 512];
     let _ = HeaderUstar::from_bytes(&dummy_block);
 }
