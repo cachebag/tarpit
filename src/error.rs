@@ -3,6 +3,7 @@
 #[derive(Debug)]
 pub enum HeaderParseError {
     InvalidMagic,
+    InvalidMode,
     InvalidVersion,
     InvalidUtf8,
     FieldTooLong(&'static str),

@@ -19,6 +19,23 @@ pub struct HeaderUstar {
     prefix:     [u8; 155],              // offset: 345
 }
 
+// helper to parse fields with octal values
+fn parse_octal(field: &'static str, bytes: &[u8]) -> Result<u64, HeaderParseError> {
+    let field_str= std::str::from_utf8(bytes)
+        .map_err(|_| HeaderParseError::InvalidUtf8)?;
+
+    let trimmed = field_str.trim_matches(|c| c == '\0' || c == ' ');
+
+    if trimmed.is_empty() {
+        return Ok(0);
+    }
+
+    let value = u64::from_str_radix(trimmed, 8)
+        .map_err(|_| HeaderParseError::InvalidOctal(field))?;
+
+        Ok(value)
+    }
+
 impl HeaderUstar {
     pub fn from_bytes(block: &[u8; 512]) -> Result<Self, HeaderParseError> {
 
@@ -112,5 +129,43 @@ impl HeaderUstar {
             .to_string(); // <-- allocates a new owned String
         
         Ok(name)
+    }
+
+    pub fn file_mode(&self) -> Result<u64, HeaderParseError> {
+        parse_octal("mode", &self.mode)
+    }
+
+    pub fn file_uid(&self) -> Result<u64, HeaderParseError> {
+        parse_octal("uid", &self.uid)
+    }
+
+    pub fn file_gid(&self) -> Result<u64, HeaderParseError> {
+        parse_octal("gid", &self.gid)
+    }
+
+    pub fn file_size(&self) -> Result<u64, HeaderParseError> {
+        parse_octal("size", &self.size)
+    }
+
+    pub fn file_mtime(&self) -> Result<u64, HeaderParseError> {
+        parse_octal("mtime", &self.mtime)
+    }
+
+    pub fn file_chksum(&self) -> Result<u64, HeaderParseError> {
+        parse_octal("chksum", &self.chksum)
+    }
+
+    // typeflag 
+    
+    /* pub fn file_linkname(&self) -> Result<String, HeaderParseError> {
+    } */ 
+    
+    pub fn file_magic(&self) -> Result<String, HeaderParseError> {
+        let magic  = std::str::from_utf8(&self.name)
+            .map_err(|_| HeaderParseError::InvalidMagic)?
+        .trim_end_matches('\0')
+            .to_string();
+
+        Ok(magic)
     }
 }
