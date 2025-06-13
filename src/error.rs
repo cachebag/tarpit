@@ -4,6 +4,7 @@
 pub enum HeaderParseError {
     InvalidMagic,
     InvalidVersion,
+    InvalidUtf8,
     FieldTooLong(&'static str),
     InvalidOctal(&'static str),
     NonAsciiField(&'static str),
