@@ -1,4 +1,4 @@
-use crate::error::HeaderParseError;
+pub use crate::error::HeaderParseError;
 
 pub struct HeaderUstar {
     name:       [u8; 100],              // offset: 0 
@@ -19,24 +19,21 @@ pub struct HeaderUstar {
     prefix:     [u8; 155],              // offset: 345
 }
 
-// helper to parse fields with octal values
-fn parse_octal(field: &'static str, bytes: &[u8]) -> Result<u64, HeaderParseError> {
-    let field_str= std::str::from_utf8(bytes)
-        .map_err(|_| HeaderParseError::InvalidUtf8)?;
-
-    let trimmed = field_str.trim_matches(|c| c == '\0' || c == ' ');
-
-    if trimmed.is_empty() {
-        return Ok(0);
-    }
-
-    let value = u64::from_str_radix(trimmed, 8)
-        .map_err(|_| HeaderParseError::InvalidOctal(field))?;
-
-        Ok(value)
-    }
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum TypeFlags {
+    Regtype,
+    Aregtype,
+    Lnktype,
+    Symtype,
+    Chrtype,
+    Blktype,
+    Dirtype,
+    Fifotype,
+    Conttype,
+}
 
 impl HeaderUstar {
+
     pub fn from_bytes(block: &[u8; 512]) -> Result<Self, HeaderParseError> {
 
         // string, name
@@ -78,6 +75,14 @@ impl HeaderUstar {
         // oct, version
         let mut version = [0u8; 2];
         version.copy_from_slice(&block[263..265]);
+
+        if &magic != b"ustar\0" {
+            return Err(HeaderParseError::InvalidMagic)
+        }
+
+        if &version != b"00" {
+            return Err(HeaderParseError::InvalidVersion)
+        }
 
         // string, uname
         let mut uname = [0u8; 32];
@@ -122,50 +127,131 @@ impl HeaderUstar {
         })
     }
 
+    // helper to parse fields with octal values
+    fn parse_octal(field_name: &'static str, bytes: &[u8]) -> Result<u64, HeaderParseError> {
+        let field_str= std::str::from_utf8(bytes)
+            .map_err(|_| HeaderParseError::InvalidUtf8)?;
+
+        let trimmed = field_str.trim_matches(|c| c == '\0' || c == ' ');
+
+        if trimmed.is_empty() {
+            return Ok(0);
+        }
+
+        let value = u64::from_str_radix(trimmed, 8)
+            .map_err(|_| HeaderParseError::InvalidOctal(field_name))?;
+
+            Ok(value)
+        }
+
     pub fn file_name(&self) -> Result<String, HeaderParseError> {
         let name = std::str::from_utf8(&self.name)
             .map_err(|_| HeaderParseError::InvalidUtf8)?
             .trim_end_matches('\0')
-            .to_string(); // <-- allocates a new owned String
+            .to_string(); 
         
         Ok(name)
     }
 
     pub fn file_mode(&self) -> Result<u64, HeaderParseError> {
-        parse_octal("mode", &self.mode)
+        HeaderUstar::parse_octal("mode", &self.mode)
     }
 
     pub fn file_uid(&self) -> Result<u64, HeaderParseError> {
-        parse_octal("uid", &self.uid)
+        HeaderUstar::parse_octal("uid", &self.uid)
     }
 
     pub fn file_gid(&self) -> Result<u64, HeaderParseError> {
-        parse_octal("gid", &self.gid)
+        HeaderUstar::parse_octal("gid", &self.gid)
     }
 
     pub fn file_size(&self) -> Result<u64, HeaderParseError> {
-        parse_octal("size", &self.size)
+        HeaderUstar::parse_octal("size", &self.size)
     }
 
     pub fn file_mtime(&self) -> Result<u64, HeaderParseError> {
-        parse_octal("mtime", &self.mtime)
+        HeaderUstar::parse_octal("mtime", &self.mtime)
     }
 
     pub fn file_chksum(&self) -> Result<u64, HeaderParseError> {
-        parse_octal("chksum", &self.chksum)
+        HeaderUstar::parse_octal("chksum", &self.chksum)
     }
 
-    // typeflag 
-    
-    /* pub fn file_linkname(&self) -> Result<String, HeaderParseError> {
-    } */ 
+    pub fn file_type(&self) -> Result<TypeFlags, HeaderParseError> {
+
+        match self.typeflag {
+            b'0'            => Ok(TypeFlags::Regtype),
+            b'\0'           => Ok(TypeFlags::Aregtype),
+            b'1'            => Ok(TypeFlags::Lnktype),
+            b'2'            => Ok(TypeFlags::Symtype),
+            b'3'            => Ok(TypeFlags::Chrtype),
+            b'4'            => Ok(TypeFlags::Blktype),
+            b'5'            => Ok(TypeFlags::Dirtype),
+            b'6'            => Ok(TypeFlags::Fifotype),
+            b'7'            => Ok(TypeFlags::Conttype),
+            _               => Err(HeaderParseError::InvalidTypeflag(self.typeflag)),
+        }
+    }
+
+    pub fn file_linkname(&self) -> Result<String, HeaderParseError> {
+        let linkname = std::str::from_utf8(&self.linkname)
+            .map_err(|_| HeaderParseError::InvalidUtf8)?
+            .trim_end_matches('\0')
+            .to_string();
+
+        Ok(linkname)
+    } 
     
     pub fn file_magic(&self) -> Result<String, HeaderParseError> {
-        let magic  = std::str::from_utf8(&self.name)
+        let magic  = std::str::from_utf8(&self.magic)
             .map_err(|_| HeaderParseError::InvalidMagic)?
-        .trim_end_matches('\0')
+            .trim_end_matches('\0')
             .to_string();
 
         Ok(magic)
+    }
+    
+    pub fn file_version(&self) -> Result<String, HeaderParseError> {
+        let version = std::str::from_utf8(&self.version)
+            .map_err(|_| HeaderParseError::InvalidVersion)?
+            .trim_end_matches('\0')
+            .to_string();
+
+        Ok(version)
+    }
+
+    pub fn file_uname(&self) -> Result<String, HeaderParseError> {
+        let uname = std::str::from_utf8(&self.uname)
+            .map_err(|_| HeaderParseError::InvalidUtf8)?
+            .trim_end_matches('\0')
+            .to_string();
+
+        Ok(uname)
+    }
+
+    pub fn file_gname(&self) -> Result<String, HeaderParseError> {
+        let gname = std::str::from_utf8(&self.gname)
+            .map_err(|_| HeaderParseError::InvalidUtf8)?
+            .trim_end_matches('\0')
+            .to_string();
+
+        Ok(gname)
+    }
+
+    pub fn file_devmajor (&self) -> Result<u64, HeaderParseError> {
+        HeaderUstar::parse_octal("devmajor", &self.devmajor)
+    }
+
+    pub fn file_devminor (&self) -> Result<u64, HeaderParseError> {
+        HeaderUstar::parse_octal("devminor", &self.devminor)
+    }
+
+    pub fn file_prefix (&self) -> Result<String, HeaderParseError> {
+        let prefix = std::str::from_utf8(&self.prefix)
+            .map_err(|_| HeaderParseError::InvalidUtf8)?
+            .trim_end_matches('\0')
+            .to_string();
+
+        Ok(prefix)
     }
 }

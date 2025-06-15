@@ -1,10 +1,10 @@
-
-
+ 
+// Errors for header struct
 #[derive(Debug)]
 pub enum HeaderParseError {
-    InvalidMagic,
     InvalidMode,
     InvalidVersion,
+    InvalidMagic,
     InvalidUtf8,
     FieldTooLong(&'static str),
     InvalidOctal(&'static str),
