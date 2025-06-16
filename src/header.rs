@@ -171,8 +171,8 @@ impl HeaderUstar {
 
             let s = std::str::from_utf8(&s).map_err(|_| HeaderParseError::InvalidUtf8)?;
             let value = u64::from_str_radix(s, 8)
-                .map_err(|_| HeaderParseError::InvalidOctal)?;
-            return Ok(value);
+                .map_err(|_| HeaderParseError::InvalidOctal("numeric field"))?;
+            Ok(value)
         } else {
             // GNU base-256 encoding
             let mut val: i128 = 0;

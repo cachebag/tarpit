@@ -1,7 +1,7 @@
 mod header;
 mod error;
 
-use header::{HeaderUstar, TypeFlags};
+use header::HeaderUstar;
 use header::HeaderParseError;
 
 fn main() -> Result<(), HeaderParseError>{
