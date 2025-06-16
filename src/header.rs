@@ -77,11 +77,11 @@ impl HeaderUstar {
         version.copy_from_slice(&block[263..265]);
 
         if &magic != b"ustar\0" {
-            return Err(HeaderParseError::InvalidMagic)
+            return Err(HeaderParseError::InvalidMagic);
         }
 
         if &version != b"00" {
-            return Err(HeaderParseError::InvalidVersion)
+            return Err(HeaderParseError::InvalidVersion);
         }
 
         // string, uname
@@ -105,6 +105,9 @@ impl HeaderUstar {
         prefix.copy_from_slice(&block[345..500]);
 
         // padding - 500 - 511
+        if block[500..512].iter().any(|&b| b != 0) {
+            return Err(HeaderParseError::NonZeroPadding);
+        }
 
 
         Ok(HeaderUstar {
@@ -127,23 +130,6 @@ impl HeaderUstar {
         })
     }
 
-    // helper to parse fields with octal values
-    fn parse_octal(field_name: &'static str, bytes: &[u8]) -> Result<u64, HeaderParseError> {
-        let field_str= std::str::from_utf8(bytes)
-            .map_err(|_| HeaderParseError::InvalidUtf8)?;
-
-        let trimmed = field_str.trim_matches(|c| c == '\0' || c == ' ');
-
-        if trimmed.is_empty() {
-            return Ok(0);
-        }
-
-        let value = u64::from_str_radix(trimmed, 8)
-            .map_err(|_| HeaderParseError::InvalidOctal(field_name))?;
-
-            Ok(value)
-        }
-
     pub fn file_name(&self) -> Result<String, HeaderParseError> {
         let name = std::str::from_utf8(&self.name)
             .map_err(|_| HeaderParseError::InvalidUtf8)?
@@ -153,28 +139,102 @@ impl HeaderUstar {
         Ok(name)
     }
 
+    pub fn full_path(&self) -> Result<String, HeaderParseError> {
+        let name = self.file_name()?;
+        let prefix = self.file_prefix()?;
+
+        if prefix.is_empty() {
+            Ok(name)
+        } else {
+            Ok(format!("{}/{}", prefix, name))
+        }
+    }
+
+
+    pub fn parse_numeric_field(buf: &[u8]) -> Result<u64, HeaderParseError> {
+        if buf.is_empty() {
+            return Err(HeaderParseError::EmptyField);
+        }
+
+        let is_base256 = buf[0] & 0x80 != 0;
+
+        if (buf[0] & 0x40) != 0 {
+            return Err(HeaderParseError::UnsupportedNegativeBase256);
+        }
+
+        if !is_base256 {
+            // Octal ASCII
+            let s = buf.iter()
+                .take_while(|&&b| b != 0 && b != b' ')
+                .copied()
+                .collect::<Vec<u8>>();
+
+            let s = std::str::from_utf8(&s).map_err(|_| HeaderParseError::InvalidUtf8)?;
+            let value = u64::from_str_radix(s, 8)
+                .map_err(|_| HeaderParseError::InvalidOctal)?;
+            return Ok(value);
+        } else {
+            // GNU base-256 encoding
+            let mut val: i128 = 0;
+            for (i, &b) in buf.iter().enumerate() {
+                let byte = if i == 0 { b & 0x7F } else { b };
+                val = (val << 8) | byte as i128;
+            }
+            Ok(val as u64) // assumes positive value only
+        }
+    }
+    
+    fn parse_octal(name: &'static str, bytes: &[u8]) -> Result<u64, HeaderParseError> {
+        Self::parse_numeric_field(bytes).map_err(|e| match e {
+            HeaderParseError::InvalidOctal(_) => HeaderParseError::InvalidOctal(name),
+            e => e,
+        })
+    }
+
+    pub fn verify_checksum(&self, raw: &[u8]) -> Result<(), HeaderParseError> {
+        
+        // Error if we don't get the expected length
+        if raw.len() != 512 {
+            return Err(HeaderParseError::UnexpectedLength);
+        }
+        let calc = raw.iter()
+            .enumerate()
+            .fold(0u32, |acc, (i, &b)| {
+                acc.wrapping_add(
+                    if (148..156).contains(&i) { b' ' as u32 } else { b as u32 }
+                )
+            });
+
+        let stored = Self::parse_numeric_field(&self.chksum)?;
+        if calc == stored as u32 {
+            Ok(())
+        } else {
+            Err(HeaderParseError::InvalidChecksum)
+        }
+    }
+
     pub fn file_mode(&self) -> Result<u64, HeaderParseError> {
-        HeaderUstar::parse_octal("mode", &self.mode)
+        Self::parse_octal("mode", &self.mode)
     }
 
     pub fn file_uid(&self) -> Result<u64, HeaderParseError> {
-        HeaderUstar::parse_octal("uid", &self.uid)
+        Self::parse_octal("uid", &self.uid)
     }
 
     pub fn file_gid(&self) -> Result<u64, HeaderParseError> {
-        HeaderUstar::parse_octal("gid", &self.gid)
+        Self::parse_octal("gid", &self.gid)
     }
 
     pub fn file_size(&self) -> Result<u64, HeaderParseError> {
-        HeaderUstar::parse_octal("size", &self.size)
+        Self::parse_octal("size", &self.size)
     }
 
     pub fn file_mtime(&self) -> Result<u64, HeaderParseError> {
-        HeaderUstar::parse_octal("mtime", &self.mtime)
+        Self::parse_octal("mtime", &self.mtime)
     }
 
     pub fn file_chksum(&self) -> Result<u64, HeaderParseError> {
-        HeaderUstar::parse_octal("chksum", &self.chksum)
+        Self::parse_octal("chksum", &self.chksum)
     }
 
     pub fn file_type(&self) -> Result<TypeFlags, HeaderParseError> {
@@ -203,8 +263,8 @@ impl HeaderUstar {
     } 
     
     pub fn file_magic(&self) -> Result<String, HeaderParseError> {
-        let magic  = std::str::from_utf8(&self.magic)
-            .map_err(|_| HeaderParseError::InvalidMagic)?
+        let magic = std::str::from_utf8(&self.magic)
+            .map_err(|_| HeaderParseError::InvalidUtf8)?
             .trim_end_matches('\0')
             .to_string();
 
@@ -213,7 +273,7 @@ impl HeaderUstar {
     
     pub fn file_version(&self) -> Result<String, HeaderParseError> {
         let version = std::str::from_utf8(&self.version)
-            .map_err(|_| HeaderParseError::InvalidVersion)?
+            .map_err(|_| HeaderParseError::InvalidUtf8)?
             .trim_end_matches('\0')
             .to_string();
 
@@ -238,15 +298,15 @@ impl HeaderUstar {
         Ok(gname)
     }
 
-    pub fn file_devmajor (&self) -> Result<u64, HeaderParseError> {
-        HeaderUstar::parse_octal("devmajor", &self.devmajor)
+    pub fn file_devmajor(&self) -> Result<u64, HeaderParseError> {
+        Self::parse_octal("devmajor", &self.devmajor)
     }
 
-    pub fn file_devminor (&self) -> Result<u64, HeaderParseError> {
-        HeaderUstar::parse_octal("devminor", &self.devminor)
+    pub fn file_devminor(&self) -> Result<u64, HeaderParseError> {
+        Self::parse_octal("devminor", &self.devminor)
     }
 
-    pub fn file_prefix (&self) -> Result<String, HeaderParseError> {
+    pub fn file_prefix(&self) -> Result<String, HeaderParseError> {
         let prefix = std::str::from_utf8(&self.prefix)
             .map_err(|_| HeaderParseError::InvalidUtf8)?
             .trim_end_matches('\0')

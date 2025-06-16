@@ -14,5 +14,9 @@ pub enum HeaderParseError {
     InvalidBlockSize,
     PathTooLong,
     UnexpectedEOF,
+    UnexpectedLength,
+    EmptyField,
+    UnsupportedNegativeBase256,
+    NonZeroPadding,
 }
 
