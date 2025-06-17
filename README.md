@@ -2,6 +2,7 @@
 
 [![Build & Tests](https://github.com/cachebag/tarpit/actions/workflows/CI.yaml/badge.svg)](https://github.com/cachebag/tarpit/actions/workflows/CI.yaml)
 <br>
+<br>
 `tarpit` is a minimal parser for POSIX `ustar` TAR headers, implemented in Rust. It focuses on interpreting raw 512-byte blocks according to the `ustar` specification.
 
 *Note: This parser intentionally rejects non-`ustar` formats. This is just meant as an exercise, please proceed with caution when using this code on any real TAR files (you really shouldn't be doing so anyways).*
