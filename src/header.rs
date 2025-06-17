@@ -1,5 +1,6 @@
 pub use crate::error::HeaderParseError;
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct HeaderUstar {
     name:       [u8; 100],              // offset: 0 
     mode:       [u8; 8],                // offset: 100
@@ -16,7 +17,7 @@ pub struct HeaderUstar {
     gname:      [u8; 32],               // offset: 297
     devmajor:   [u8; 8],                // offset: 329
     devminor:   [u8; 8],                // offset: 337
-    prefix:     [u8; 155],              // offset: 345
+    prefix:     [u8; 155],              // offset: 345:
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
