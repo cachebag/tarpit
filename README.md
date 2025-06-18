@@ -22,3 +22,4 @@ let blk: [u8; 512] = /* your TAR header block */;
 let header = HeaderUstar::from_bytes(&blk)?;
 println!("File name: {}", header.file_name()?);
 println!("Size: {}", header.file_size()?);
+/*-----Rest of accessors...-----*/
